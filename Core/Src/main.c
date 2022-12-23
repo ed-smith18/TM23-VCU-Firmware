@@ -36,6 +36,12 @@
 /* USER CODE BEGIN PD */
 //#define APPS_BUF_LEN 4096
 const uint32_t bpsThreshold = 3500; //need to set to store the signal value which corresponds to brakes being pressed
+const uint32_t bps_MIN = 500; //Below range ADC value for BPS
+const uint32_t bps_MAX = 3900; //Above range ADC value for BPS
+const uint32_t APPS_0_MIN = 200; //Below range ADC value for APPS_0
+const uint32_t APPS_0_MAX = 2800; //Above range ADC value for APPS_0
+const uint32_t APPS_1_MIN = 400; //Below range ADC value for APPS_1
+const uint32_t APPS_1_MAX = 3900; //Above range ADC value for APPS_1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -50,6 +56,8 @@ ADC_HandleTypeDef hadc3;
 DMA_HandleTypeDef hdma_adc1;
 DMA_HandleTypeDef hdma_adc2;
 DMA_HandleTypeDef hdma_adc3;
+
+CAN_HandleTypeDef hcan1;
 
 UART_HandleTypeDef huart2;
 
@@ -73,6 +81,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_ADC2_Init(void);
 static void MX_ADC3_Init(void);
+static void MX_CAN1_Init(void);
 /* USER CODE BEGIN PFP */
 static bool Ready_to_Drive(void);
 static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
@@ -81,7 +90,21 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+CAN_TxHeaderTypeDef TxHeader;
+CAN_RxHeaderTypeDef RxHeader;
 
+uint8_t TxData[8];
+uint8_t RxData[8];
+
+uint32_t TxMailbox;
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
+		Error_Handler();
+	}
+	//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+}
 /* USER CODE END 0 */
 
 /**
@@ -116,10 +139,30 @@ int main(void) {
 	MX_ADC1_Init();
 	MX_ADC2_Init();
 	MX_ADC3_Init();
+	MX_CAN1_Init();
 	/* USER CODE BEGIN 2 */
 	HAL_ADC_Start_DMA(&hadc1, &appsVal[0], 1); //start the ADC for APPS 1 (Linear Sensor) in DMA mode
 	HAL_ADC_Start_DMA(&hadc3, &bpsVal[0], 1); //start the ADC for Brake Pressure Sensors in DMA mode
 	HAL_ADC_Start_DMA(&hadc2, &appsVal[1], 1); //start the ADC for APPS 2 (Rotational Sensor) in DMA mode
+
+	//Start the CAN Bus
+	HAL_CAN_Start(&hcan1);
+
+	//NOT WORKING
+	//Initialize the CAN RX Interrupt
+//	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
+//			!= HAL_OK) {
+//		Error_Handler();
+//	}
+
+	//Setting Required Data Values for CAN frame
+	TxHeader.DLC = 8;	//data length in bytes
+	TxHeader.ExtId = 0;
+	TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
+	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
+	TxHeader.StdId = 0x23;	//CAN ID of this device
+	TxHeader.TransmitGlobalTime = DISABLE;
+
 
 //	 Ready to Drive check (returns true if ready and false if not ready)
 //	ready_to_drive = Ready_to_Drive();
@@ -129,6 +172,9 @@ int main(void) {
 //		//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 //	}
 
+	uint32_t apps_PP[2]; //to store APPS Pedal Position Values (in %)
+	char msg[256];
+
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -137,8 +183,89 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-		HAL_Delay(500);
+//		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
+		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
+			APPS_Failure = true;
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+			//start 100ms implausibility timer
+		}
+
+		if ((appsVal[1] < APPS_1_MIN) || (appsVal[1] > APPS_1_MAX)) {
+			APPS_Failure = true;
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+			//start 100ms implausibility timer
+		}
+
+		else {
+			APPS_Failure = false;
+
+			APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
+
+			sprintf(msg,
+					"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t PP2 = %lu \r\n",
+					appsVal[0], appsVal[1], apps_PP[0], apps_PP[1]);
+			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+			HAL_MAX_DELAY);
+
+			if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
+				//reset the 100ms timer if started since there is no >10% implausibility
+//				HAL_TIM_Base_Stop(&htim10);
+//				timer_100ms = 0;
+//				implausibility = false;
+//				//osTimerStop(implausibility_TimerHandle);
+//
+//				//Broadcast messages sent to motor controller to control motor torque
+//				TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
+//				TxData[1] = 0x1F; //Node ID for Standard CAN message
+//				TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
+
+				if (!APPS_Failure) {
+					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+					//Send out CAN message
+//					if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData,
+//							&TxMailbox) != HAL_OK) {
+//						Error_Handler();
+//					} //end if
+
+				} //end if
+
+				/**
+				 * Need to send CAN messages before motor controller times out
+				 * Recommended settings are to send out CAN message every half the timeout
+				 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
+				 * Need to configure actual timeout period for motor controller using DTI tool.
+				 * We will set it to 50ms for now.
+				 */
+
+			} //end if
+
+			else {
+
+				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+				//Should only get here if there is a >10% difference between APPS
+
+				// check to see if timer has run for >100ms then send CAN message to set motor torque to zero
+//				if (implausibility) {
+//					if (__HAL_TIM_GET_COUNTER(&htim10) - timer_100ms >= 10000) {
+//						//shutdown power to motor
+//					} else {
+//						continue; //go back to beginning of loop (not sure if needed)
+//					}
+//				} //end if
+//				else {
+//					//start 100ms timer if not started
+//					HAL_TIM_Base_Start(&htim10);
+//					timer_100ms = __HAL_TIM_GET_COUNTER(&htim10);
+//					implausibility = true;
+//
+//				} //end else
+
+			} //end else
+
+		} //end else
+
+		HAL_Delay(100);
 	}
 	/* USER CODE END 3 */
 }
@@ -337,6 +464,41 @@ static void MX_ADC3_Init(void) {
 	/* USER CODE BEGIN ADC3_Init 2 */
 
 	/* USER CODE END ADC3_Init 2 */
+
+}
+
+/**
+ * @brief CAN1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_CAN1_Init(void) {
+
+	/* USER CODE BEGIN CAN1_Init 0 */
+
+	/* USER CODE END CAN1_Init 0 */
+
+	/* USER CODE BEGIN CAN1_Init 1 */
+
+	/* USER CODE END CAN1_Init 1 */
+	hcan1.Instance = CAN1;
+	hcan1.Init.Prescaler = 18;
+	hcan1.Init.Mode = CAN_MODE_NORMAL;
+	hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+	hcan1.Init.TimeSeg1 = CAN_BS1_2TQ;
+	hcan1.Init.TimeSeg2 = CAN_BS2_2TQ;
+	hcan1.Init.TimeTriggeredMode = DISABLE;
+	hcan1.Init.AutoBusOff = DISABLE;
+	hcan1.Init.AutoWakeUp = DISABLE;
+	hcan1.Init.AutoRetransmission = ENABLE;
+	hcan1.Init.ReceiveFifoLocked = DISABLE;
+	hcan1.Init.TransmitFifoPriority = DISABLE;
+	if (HAL_CAN_Init(&hcan1) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN CAN1_Init 2 */
+
+	/* USER CODE END CAN1_Init 2 */
 
 }
 
