@@ -103,7 +103,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
 		Error_Handler();
 	}
-	//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+//	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
 }
 /* USER CODE END 0 */
 
@@ -148,12 +148,12 @@ int main(void) {
 	//Start the CAN Bus
 	HAL_CAN_Start(&hcan1);
 
-	//NOT WORKING
-	//Initialize the CAN RX Interrupt
-//	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
-//			!= HAL_OK) {
-//		Error_Handler();
-//	}
+//	NOT WORKING
+//	Initialize the CAN RX Interrupt
+	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
+			!= HAL_OK) {
+		Error_Handler();
+	}
 
 	//Setting Required Data Values for CAN frame
 	TxHeader.DLC = 8;	//data length in bytes
@@ -162,7 +162,6 @@ int main(void) {
 	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
 	TxHeader.StdId = 0x23;	//CAN ID of this device
 	TxHeader.TransmitGlobalTime = DISABLE;
-
 
 //	 Ready to Drive check (returns true if ready and false if not ready)
 //	ready_to_drive = Ready_to_Drive();
@@ -183,89 +182,96 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-//		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 
-		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
-			APPS_Failure = true;
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-			//start 100ms implausibility timer
-		}
+		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
 
-		if ((appsVal[1] < APPS_1_MIN) || (appsVal[1] > APPS_1_MAX)) {
-			APPS_Failure = true;
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-			//start 100ms implausibility timer
-		}
+//		Send out CAN message
+		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+				!= HAL_OK) {
+			Error_Handler();
+		} //end if
 
-		else {
-			APPS_Failure = false;
-
-			APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
-
-			sprintf(msg,
-					"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t PP2 = %lu \r\n",
-					appsVal[0], appsVal[1], apps_PP[0], apps_PP[1]);
-			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-			HAL_MAX_DELAY);
-
-			if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
-				//reset the 100ms timer if started since there is no >10% implausibility
-//				HAL_TIM_Base_Stop(&htim10);
-//				timer_100ms = 0;
-//				implausibility = false;
-//				//osTimerStop(implausibility_TimerHandle);
+//		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
+//			APPS_Failure = true;
+//			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+//			//start 100ms implausibility timer
+//		}
 //
+//		if ((appsVal[1] < APPS_1_MIN) || (appsVal[1] > APPS_1_MAX)) {
+//			APPS_Failure = true;
+//			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+//			//start 100ms implausibility timer
+//		}
+//
+//		else {
+//			APPS_Failure = false;
+//
+//			APPS_Mapping(&appsVal[0], &appsVal[1], apps_PP);
+//
+//			sprintf(msg,
+//					"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t PP2 = %lu \r\n",
+//					appsVal[0], appsVal[1], apps_PP[0], apps_PP[1]);
+//			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+//			HAL_MAX_DELAY);
+//
+//			if (abs(apps_PP[0] - apps_PP[1]) <= 10) {
+//				//reset the 100ms timer if started since there is no >10% implausibility
+////				HAL_TIM_Base_Stop(&htim10);
+////				timer_100ms = 0;
+////				implausibility = false;
+////				//osTimerStop(implausibility_TimerHandle);
+////
 //				//Broadcast messages sent to motor controller to control motor torque
 //				TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-//				TxData[1] = 0x1F; //Node ID for Standard CAN message
-//				TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
-
-				if (!APPS_Failure) {
-					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-					//Send out CAN message
+////				TxData[1] = 0x1F; //Node ID for Standard CAN message
+////				TxData[2] = 10 * apps_PP[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
+//
+//				if (!APPS_Failure) {
+//					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+//					//Send out CAN message
 //					if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData,
 //							&TxMailbox) != HAL_OK) {
 //						Error_Handler();
 //					} //end if
-
-				} //end if
-
-				/**
-				 * Need to send CAN messages before motor controller times out
-				 * Recommended settings are to send out CAN message every half the timeout
-				 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
-				 * Need to configure actual timeout period for motor controller using DTI tool.
-				 * We will set it to 50ms for now.
-				 */
-
-			} //end if
-
-			else {
-
-				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-				//Should only get here if there is a >10% difference between APPS
-
-				// check to see if timer has run for >100ms then send CAN message to set motor torque to zero
-//				if (implausibility) {
-//					if (__HAL_TIM_GET_COUNTER(&htim10) - timer_100ms >= 10000) {
-//						//shutdown power to motor
-//					} else {
-//						continue; //go back to beginning of loop (not sure if needed)
-//					}
-//				} //end if
-//				else {
-//					//start 100ms timer if not started
-//					HAL_TIM_Base_Start(&htim10);
-//					timer_100ms = __HAL_TIM_GET_COUNTER(&htim10);
-//					implausibility = true;
 //
-//				} //end else
-
-			} //end else
-
-		} //end else
-
-		HAL_Delay(100);
+//				} //end if
+//
+//				/**
+//				 * Need to send CAN messages before motor controller times out
+//				 * Recommended settings are to send out CAN message every half the timeout
+//				 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
+//				 * Need to configure actual timeout period for motor controller using DTI tool.
+//				 * We will set it to 50ms for now.
+//				 */
+//
+//			} //end if
+//
+//			else {
+//
+//				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+//				//Should only get here if there is a >10% difference between APPS
+//
+//				// check to see if timer has run for >100ms then send CAN message to set motor torque to zero
+////				if (implausibility) {
+////					if (__HAL_TIM_GET_COUNTER(&htim10) - timer_100ms >= 10000) {
+////						//shutdown power to motor
+////					} else {
+////						continue; //go back to beginning of loop (not sure if needed)
+////					}
+////				} //end if
+////				else {
+////					//start 100ms timer if not started
+////					HAL_TIM_Base_Start(&htim10);
+////					timer_100ms = __HAL_TIM_GET_COUNTER(&htim10);
+////					implausibility = true;
+////
+////				} //end else
+//
+//			} //end else
+//
+//		} //end else
+		HAL_Delay(1000);
 	}
 	/* USER CODE END 3 */
 }
@@ -497,7 +503,19 @@ static void MX_CAN1_Init(void) {
 		Error_Handler();
 	}
 	/* USER CODE BEGIN CAN1_Init 2 */
+	CAN_FilterTypeDef canfilterconfig;
+	canfilterconfig.FilterActivation = CAN_FILTER_ENABLE;
+	canfilterconfig.FilterBank = 0;
+	canfilterconfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+	canfilterconfig.FilterIdHigh = 0;
+	canfilterconfig.FilterIdLow = 0x0000;
+	canfilterconfig.FilterMaskIdHigh = 0;
+	canfilterconfig.FilterMaskIdLow = 0x0000;
+	canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK;
+	canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT;
+	canfilterconfig.SlaveStartFilterBank = 0; // how many filters to assign to the CAN1 (master can)
 
+	HAL_CAN_ConfigFilter(&hcan1, &canfilterconfig);
 	/* USER CODE END CAN1_Init 2 */
 
 }
