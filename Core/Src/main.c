@@ -98,12 +98,19 @@ uint8_t RxData[8];
 
 uint32_t TxMailbox;
 
+char msg[256];
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
 		Error_Handler();
 	}
 //	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+
+	sprintf(msg, "CAN Data = %d \r\n", RxData[0]);
+	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+	HAL_MAX_DELAY);
+
 }
 /* USER CODE END 0 */
 
@@ -183,15 +190,12 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-
 		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-
 //		Send out CAN message
 		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
 				!= HAL_OK) {
 			Error_Handler();
 		} //end if
-
 //		if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
 //			APPS_Failure = true;
 //			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);

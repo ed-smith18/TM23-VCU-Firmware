@@ -60,8 +60,8 @@ all: main-build
 main-build: TM23-VCU-Firmware.elf secondary-outputs
 
 # Tool invocations
-TM23-VCU-Firmware.elf TM23-VCU-Firmware.map: $(OBJS) $(USER_OBJS) C:\Users\Owner\STM32CubeIDE\workspace_1.7.0\TM23-VCU-Firmware\STM32F446RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "TM23-VCU-Firmware.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\Owner\STM32CubeIDE\workspace_1.7.0\TM23-VCU-Firmware\STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="TM23-VCU-Firmware.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+TM23-VCU-Firmware.elf TM23-VCU-Firmware.map: $(OBJS) $(USER_OBJS) C:\Users\edams\STM32CubeIDE\workspace_1.10.1\TM23-VCU-Firmware\STM32F446RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "TM23-VCU-Firmware.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\edams\STM32CubeIDE\workspace_1.10.1\TM23-VCU-Firmware\STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="TM23-VCU-Firmware.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
