@@ -113,8 +113,8 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 	//Received message from BMS about current limit (Need to config. CAN filter, so VCU only accepts messages from BMS based on BMS CAN I.D)
 	bms_Current_Limit_Ready = true;
 
-	sprintf(msg, "CAN Data = %d \r\n", RxData[0]);
-	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
+//	sprintf(msg, "CAN Data = %d \r\n", RxData[0]);
+//	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
 
 //	BMS_Current_Limit =  RxData[0];
 }
@@ -169,10 +169,12 @@ int main(void) {
 
 	//Setting Required Data Values for CAN frame
 	TxHeader.DLC = 8;	//data length in bytes
-	TxHeader.ExtId = 0;
-	TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
+//	TxHeader.StdId = 0;
+//	TxHeader.ExtId = 0;
+//	TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
+	TxHeader.IDE = CAN_ID_EXT; //specify Extended CAN ID
 	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
-	TxHeader.StdId = 0x23;	//CAN ID of this device
+//	TxHeader.StdId = 0x23;	//CAN ID of this device
 	TxHeader.TransmitGlobalTime = DISABLE;
 
 //	 Ready to Drive check (returns true if ready and false if not ready)
@@ -185,6 +187,7 @@ int main(void) {
 
 	uint32_t apps_Pedal_Position[2]; //to store APPS Pedal Position Values (in %)
 	char msg[256];
+	uint32_t ERPM_command;
 
 	/* USER CODE END 2 */
 
@@ -195,12 +198,50 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-//		Send out CAN message for testing
-//		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-//				!= HAL_OK) {
-//			Error_Handler();
-//		} //end if
+
+		TxHeader.ExtId = 0x00000CFF; //Message ID for "Drive Enable" for motor controller
+		//		TxHeader.StdId = 0x0C;
+		TxData[0] = 0x01;
+		//		TxData[1] = 0x00;
+		//		TxData[2] = 0x00;
+		//		TxData[3] = 0x00;
+		//		TxData[4] = 0x00;
+		//		TxData[5] = 0x00;
+		//		TxData[6] = 0x00;
+		//		TxData[7] = 0x00;
+
+		//				Send out CAN message for testing
+		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+				!= HAL_OK) {
+			Error_Handler();
+		} //end if
+
+		APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
+
+		ERPM_command = apps_Pedal_Position[0] *1.75 / 100.0 * 1000.0;
+
+		// Calling the function
+//		dec_to_hexa_conversion(ERPM_command);
+
+//		\t PP2 = %lu
+		sprintf(msg,
+				"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t ERPM = %lu \r\n",
+				appsVal[0], appsVal[1], apps_Pedal_Position[0],
+				ERPM_command);
+		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+		HAL_MAX_DELAY);
+
+//		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
+		TxHeader.ExtId = 0x000003FF; //Message ID for "Set ERPM" for motor controller
+		TxData[0] = 0x00;
+		TxData[1] = 0x00;
+		TxData[2] = 0x03;
+		TxData[3] = 0xE8;
+
+		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+				!= HAL_OK) {
+			Error_Handler();
+		} //end if
 
 //		//Out of range Brake pressure sensor value check
 //		if ((bpsVal[0] < bps_MIN) || (bpsVal[0] > bps_MAX)) {
@@ -296,7 +337,7 @@ int main(void) {
 //
 //		} //end else
 
-		HAL_Delay(1000);
+		HAL_Delay(100);
 
 	} //end infinite while loop
 	/* USER CODE END 3 */
@@ -709,6 +750,34 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 	}
 
 } //end APPS_Mapping()
+
+//int dec_to_hexa_conversion(int decimal_Number) {
+//	int i = 1, j, temp;
+//	char hexa_Number[100];
+//
+//	// if decimal number is not
+//	// equal to zero then enter in
+//	// to the loop and execute the
+//	// statements
+//	while (decimal_Number != 0) {
+//		temp = decimal_Number % 16;
+//
+//		// converting decimal number
+//		// in to a hexa decimal
+//		// number
+//		if (temp < 10)
+//			temp = temp + 48;
+//		else
+//			temp = temp + 55;
+//		hexa_Number[i++] = temp;
+//		decimal_Number = decimal_Number / 16;
+//	}
+//	// printing the hexa decimal number
+//	printf("Hexadecimal value is: ");
+//	for (j = i - 1; j > 0; j--)
+//		printf("%c", hexa_Number[j]);
+//}        //end dec_to_hexa_conversion
+
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc) {
 
 }
