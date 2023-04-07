@@ -199,9 +199,11 @@ int main(void) {
 		/* USER CODE BEGIN 3 */
 		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 
-		TxHeader.ExtId = 0x00000CFF; //Message ID for "Drive Enable" for motor controller
+//		TxHeader.ExtId = 0x00000CFF; //Message ID for "Drive Enable" for motor controller
+		TxHeader.ExtId = 3327; //Message ID for "Drive Enable" for motor controller
 		//		TxHeader.StdId = 0x0C;
-		TxData[0] = 0x01;
+//		TxData[0] = 0x01;
+		TxData[0] = 1;
 		//		TxData[1] = 0x00;
 		//		TxData[2] = 0x00;
 		//		TxData[3] = 0x00;
@@ -218,7 +220,11 @@ int main(void) {
 
 		APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
 
-		ERPM_command = apps_Pedal_Position[0] *1.75 / 100.0 * 1000.0;
+		ERPM_command = apps_Pedal_Position[0] *1.75 / 100.0 * 35000.0;
+
+//		Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
+		uint8_t ERPM_high_byte = (ERPM_command >> 8) & 0xFF;  // shift right by 8 bits and mask with 0xFF
+		uint8_t EPRM_low_byte = ERPM_command & 0xFF;  // mask with 0xFF to get the lower 8 bits
 
 		// Calling the function
 //		dec_to_hexa_conversion(ERPM_command);
@@ -232,11 +238,19 @@ int main(void) {
 		HAL_MAX_DELAY);
 
 //		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-		TxHeader.ExtId = 0x000003FF; //Message ID for "Set ERPM" for motor controller
-		TxData[0] = 0x00;
-		TxData[1] = 0x00;
-		TxData[2] = 0x03;
-		TxData[3] = 0xE8;
+//		TxHeader.ExtId = 0x000003FF; //Message ID for "Set ERPM" for motor controller
+		TxHeader.ExtId = 1023; //Message ID for "Set ERPM" for motor controller
+
+
+//		TxData[0] = 0x00;
+//		TxData[1] = 0x00;
+//		TxData[2] = 0x03;
+//		TxData[3] = 0xE8;
+
+		TxData[0] = 0;
+		TxData[1] = 0;
+		TxData[2] = ERPM_high_byte;
+		TxData[3] = EPRM_low_byte;
 
 		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
 				!= HAL_OK) {
@@ -337,7 +351,7 @@ int main(void) {
 //
 //		} //end else
 
-		HAL_Delay(100);
+		HAL_Delay(50);
 
 	} //end infinite while loop
 	/* USER CODE END 3 */
