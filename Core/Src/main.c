@@ -42,6 +42,8 @@ const uint32_t APPS_0_MIN = 200; //Below range ADC value for APPS_0
 const uint32_t APPS_0_MAX = 2800; //Above range ADC value for APPS_0
 const uint32_t APPS_1_MIN = 400; //Below range ADC value for APPS_1
 const uint32_t APPS_1_MAX = 3900; //Above range ADC value for APPS_1
+
+#define LOOP_TIME_INTERVAL  100 //loop time in counts x milliseconds, 100 x 0.001 == 0.1s -> 10Hz
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -103,6 +105,8 @@ uint32_t TxMailbox;
 
 char msg[256];
 
+uint32_t current_time, time_diff, prev_time;
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
@@ -161,11 +165,11 @@ int main(void) {
 	//Start the CAN Bus
 	HAL_CAN_Start(&hcan1);
 
-//	Initialize the CAN RX Interrupt
-	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
-			!= HAL_OK) {
-		Error_Handler();
-	}
+////	Initialize the CAN RX Interrupt
+//	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
+//			!= HAL_OK) {
+//		Error_Handler();
+//	}
 
 	//Setting Required Data Values for CAN frame
 	TxHeader.DLC = 8;	//data length in bytes
@@ -189,6 +193,11 @@ int main(void) {
 	char msg[256];
 	uint32_t ERPM_command;
 
+	//initialize counters
+	prev_time = 0;
+	current_time = 0;
+	time_diff = 0;
+
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -197,65 +206,82 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		time_diff = current_time - prev_time; //calculate time difference
 
-//		TxHeader.ExtId = 0x00000CFF; //Message ID for "Drive Enable" for motor controller
-		TxHeader.ExtId = 3327; //Message ID for "Drive Enable" for motor controller
-		//		TxHeader.StdId = 0x0C;
-//		TxData[0] = 0x01;
-		TxData[0] = 1;
-		//		TxData[1] = 0x00;
-		//		TxData[2] = 0x00;
-		//		TxData[3] = 0x00;
-		//		TxData[4] = 0x00;
-		//		TxData[5] = 0x00;
-		//		TxData[6] = 0x00;
-		//		TxData[7] = 0x00;
+		if (time_diff >= LOOP_TIME_INTERVAL) {
 
-		//				Send out CAN message for testing
-		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-				!= HAL_OK) {
-			Error_Handler();
-		} //end if
+			// if 100ms have elapsed since last time this condition became true,
+			// then execute your program functions
 
-		APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
+			/* execute your program functions*/
+			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 
-		ERPM_command = apps_Pedal_Position[0] *1.75 / 100.0 * 35000.0;
+			//Add other tasks to execute
 
-//		Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
-		uint8_t ERPM_high_byte = (ERPM_command >> 8) & 0xFF;  // shift right by 8 bits and mask with 0xFF
-		uint8_t EPRM_low_byte = ERPM_command & 0xFF;  // mask with 0xFF to get the lower 8 bits
+			prev_time = current_time;// update previous time
+		}
+		else {
+			current_time = HAL_GetTick();
+		}
 
-		// Calling the function
-//		dec_to_hexa_conversion(ERPM_command);
+////		TxHeader.ExtId = 0x00000CFF; //Message ID for "Drive Enable" for motor controller
+//		TxHeader.ExtId = 3327; //Message ID for "Drive Enable" for motor controller
+//		//		TxHeader.StdId = 0x0C;
+////		TxData[0] = 0x01;
+//		TxData[0] = 1;
+//		//		TxData[1] = 0x00;
+//		//		TxData[2] = 0x00;
+//		//		TxData[3] = 0x00;
+//		//		TxData[4] = 0x00;
+//		//		TxData[5] = 0x00;
+//		//		TxData[6] = 0x00;
+//		//		TxData[7] = 0x00;
+//
+//		//				Send out CAN message for testing
+//		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+//				!= HAL_OK) {
+//			Error_Handler();
+//		} //end if
+//
+//		APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
+//
+//		ERPM_command = apps_Pedal_Position[0] * 1.75 / 100.0 * 35000.0;
+//
+////		Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
+//		uint8_t ERPM_high_byte = (ERPM_command >> 8) & 0xFF; // shift right by 8 bits and mask with 0xFF
+//		uint8_t EPRM_low_byte = ERPM_command & 0xFF; // mask with 0xFF to get the lower 8 bits
+//
+//		// Calling the function
+////		dec_to_hexa_conversion(ERPM_command);
+//
+////		\t PP2 = %lu
+//		sprintf(msg,
+//				"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t ERPM = %lu \r\n",
+//				appsVal[0], appsVal[1], apps_Pedal_Position[0], ERPM_command);
+//		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+//		HAL_MAX_DELAY);
+//
+////		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
+////		TxHeader.ExtId = 0x000003FF; //Message ID for "Set ERPM" for motor controller
+//		TxHeader.ExtId = 1023; //Message ID for "Set ERPM" for motor controller
+//
+////		TxData[0] = 0x00;
+////		TxData[1] = 0x00;
+////		TxData[2] = 0x03;
+////		TxData[3] = 0xE8;
+//
+//		TxData[0] = 0;
+//		TxData[1] = 0;
+//		TxData[2] = ERPM_high_byte;
+//		TxData[3] = EPRM_low_byte;
+//
+//		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+//				!= HAL_OK) {
+//			Error_Handler();
+//		} //end if
 
-//		\t PP2 = %lu
-		sprintf(msg,
-				"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t ERPM = %lu \r\n",
-				appsVal[0], appsVal[1], apps_Pedal_Position[0],
-				ERPM_command);
-		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-		HAL_MAX_DELAY);
-
-//		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-//		TxHeader.ExtId = 0x000003FF; //Message ID for "Set ERPM" for motor controller
-		TxHeader.ExtId = 1023; //Message ID for "Set ERPM" for motor controller
 
 
-//		TxData[0] = 0x00;
-//		TxData[1] = 0x00;
-//		TxData[2] = 0x03;
-//		TxData[3] = 0xE8;
-
-		TxData[0] = 0;
-		TxData[1] = 0;
-		TxData[2] = ERPM_high_byte;
-		TxData[3] = EPRM_low_byte;
-
-		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-				!= HAL_OK) {
-			Error_Handler();
-		} //end if
 
 //		//Out of range Brake pressure sensor value check
 //		if ((bpsVal[0] < bps_MIN) || (bpsVal[0] > bps_MAX)) {
@@ -351,7 +377,7 @@ int main(void) {
 //
 //		} //end else
 
-		HAL_Delay(50);
+//		HAL_Delay(50);
 
 	} //end infinite while loop
 	/* USER CODE END 3 */
