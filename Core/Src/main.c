@@ -105,7 +105,7 @@ uint32_t TxMailbox;
 
 char msg[256];
 
-uint32_t current_time, time_diff, prev_time;
+uint32_t current_time, time_diff, prev_time, main_loop_count;
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 
@@ -197,7 +197,7 @@ int main(void) {
 	prev_time = 0;
 	current_time = 0;
 	time_diff = 0;
-
+	main_loop_count = 0;
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -216,13 +216,29 @@ int main(void) {
 			/* execute your program functions*/
 			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 
+			APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
+
+			ERPM_command = apps_Pedal_Position[0] * 1.75 / 100.0 * 35000.0;
+
+			//Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
+//			uint8_t ERPM_high_byte = (ERPM_command >> 8) & 0xFF; // shift right by 8 bits and mask with 0xFF
+//			uint8_t EPRM_low_byte = ERPM_command & 0xFF; // mask with 0xFF to get the lower 8 bits
+
+			sprintf(msg,
+					"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t ERPM = %lu \r\n",
+					appsVal[0], appsVal[1], apps_Pedal_Position[0],
+					ERPM_command);
+			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+			HAL_MAX_DELAY);
+
 			//Add other tasks to execute
 
-			prev_time = current_time;// update previous time
+			prev_time = current_time; // update previous time
 		}
 		else {
 			current_time = HAL_GetTick();
 		}
+		main_loop_count++;
 
 ////		TxHeader.ExtId = 0x00000CFF; //Message ID for "Drive Enable" for motor controller
 //		TxHeader.ExtId = 3327; //Message ID for "Drive Enable" for motor controller
@@ -243,24 +259,7 @@ int main(void) {
 //			Error_Handler();
 //		} //end if
 //
-//		APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
-//
-//		ERPM_command = apps_Pedal_Position[0] * 1.75 / 100.0 * 35000.0;
-//
-////		Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
-//		uint8_t ERPM_high_byte = (ERPM_command >> 8) & 0xFF; // shift right by 8 bits and mask with 0xFF
-//		uint8_t EPRM_low_byte = ERPM_command & 0xFF; // mask with 0xFF to get the lower 8 bits
-//
-//		// Calling the function
-////		dec_to_hexa_conversion(ERPM_command);
-//
-////		\t PP2 = %lu
-//		sprintf(msg,
-//				"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t ERPM = %lu \r\n",
-//				appsVal[0], appsVal[1], apps_Pedal_Position[0], ERPM_command);
-//		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-//		HAL_MAX_DELAY);
-//
+
 ////		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
 ////		TxHeader.ExtId = 0x000003FF; //Message ID for "Set ERPM" for motor controller
 //		TxHeader.ExtId = 1023; //Message ID for "Set ERPM" for motor controller
@@ -279,9 +278,6 @@ int main(void) {
 //				!= HAL_OK) {
 //			Error_Handler();
 //		} //end if
-
-
-
 
 //		//Out of range Brake pressure sensor value check
 //		if ((bpsVal[0] < bps_MIN) || (bpsVal[0] > bps_MAX)) {
