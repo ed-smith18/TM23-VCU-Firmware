@@ -43,6 +43,7 @@ const uint32_t APPS_0_MAX = 2800; //Above range ADC value for APPS_0
 const uint32_t APPS_1_MIN = 400; //Below range ADC value for APPS_1
 const uint32_t APPS_1_MAX = 3900; //Above range ADC value for APPS_1
 
+//#define LOOP_TIME_INTERVAL  0.001 //loop time in counts x milliseconds, 0.001 x 0.001 == 0.001s -> 10000Hz
 #define LOOP_TIME_INTERVAL  100 //loop time in counts x milliseconds, 100 x 0.001 == 0.1s -> 10Hz
 /* USER CODE END PD */
 
@@ -70,7 +71,8 @@ uint32_t appsVal[2]; //to store APPS ADC values
 uint32_t bpsVal[2]; //to store Brake Pressure Sensor values
 
 uint8_t BMS_Current_Limit;
-uint32_t BMS_Current_Limit_ID = 0xAFF;
+uint8_t AC_Max_Current = 100;
+uint32_t BMS_Current_Limit_ID = 0xA07;
 
 bool ready_to_drive = false;
 
@@ -113,20 +115,17 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
 		Error_Handler();
 	}
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
 
 	//Received message from BMS about current limit (Need to config. CAN filter, so VCU only accepts messages from BMS based on BMS CAN I.D)
 	if (RxHeader.ExtId == BMS_Current_Limit_ID) {
 		bms_Current_Limit_Ready = true;
-		BMS_Current_Limit = RxData[0];
-		sprintf(msg, "BMS_Current_Limit = %d \r\n", BMS_Current_Limit);
-		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
+		BMS_Current_Limit = RxData[1] / 10;
+//		sprintf(msg, "BMS_Current_Limit (%ld) = %d \r\n", RxHeader.ExtId, BMS_Current_Limit);
+//		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
 	}
 
-//	sprintf(msg, "CAN Data = %d \r\n", RxData[0]);
-//	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
-
-//	sprintf(msg, "CAN Data = %d\n %d %d %d %d %d %d %d %d %d \r\n",
+//
+//	sprintf(msg, "CAN Data = %lu \n %d %d %d %d %d %d %d %d %d \r\n",
 //			RxHeader.ExtId, RxData[0], RxData[1], RxData[2], RxData[3],
 //			RxData[4], RxData[5], RxData[6], RxData[7], RxData[8]);
 //
@@ -174,13 +173,13 @@ int main(void) {
 	HAL_ADC_Start_DMA(&hadc2, &appsVal[1], 1); //start the ADC for APPS 2 (Rotational Sensor) in DMA mode
 
 	//Start the CAN Bus
-//	HAL_CAN_Start(&hcan1);
-//
-////	Initialize the CAN RX Interrupt
-//	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
-//			!= HAL_OK) {
-//		Error_Handler();
-//	}
+	HAL_CAN_Start(&hcan1);
+
+//	Initialize the CAN RX Interrupt
+	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
+			!= HAL_OK) {
+		Error_Handler();
+	}
 
 	//Setting Required Data Values for CAN frame
 	TxHeader.DLC = 8;	//data length in bytes
@@ -203,6 +202,7 @@ int main(void) {
 	uint32_t apps_Pedal_Position[2]; //to store APPS Pedal Position Values (in %)
 	char msg[256];
 	uint32_t ERPM_command;
+	uint32_t AC_Current_Command;
 
 	//initialize counters
 	prev_time = 0;
@@ -218,6 +218,8 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
+
+		/* Code BEGIN TESTING*/
 		time_diff = current_time - prev_time; //calculate time difference
 
 		if (time_diff >= LOOP_TIME_INTERVAL) {
@@ -230,20 +232,37 @@ int main(void) {
 //			sprintf(msg1, "BPS1 = %d \r\n BPS2 = %d \r\n",bpsVal[0],bpsVal[1]);
 			APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
 
+			AC_Current_Command = apps_Pedal_Position[0] / 100.0 * AC_Max_Current;
+
+			if (AC_Current_Command > BMS_Current_Limit){
+				AC_Current_Command = BMS_Current_Limit;
+			}
+
 			sprintf(msg,
-					"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t PP2 = %lu \r\n",
-					appsVal[0], appsVal[1], apps_Pedal_Position[0],
-					apps_Pedal_Position[1]);
+					"APPS_1 = %lu \t APPS_2 = %lu \t Current Command = %lu \r\n",
+					appsVal[0], appsVal[1], AC_Current_Command);
 			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
 			HAL_MAX_DELAY);
 
-			if (!(abs(apps_Pedal_Position[0] - apps_Pedal_Position[1]) <= 10)) {
-				sprintf(msg, "APPS Implausibility \r\n");
-				HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-				HAL_MAX_DELAY);
+			prev_time = current_time; // update previous time
 
-			}
+		} else {
+			current_time = HAL_GetTick();
+		}
+		main_loop_count++;
+		/*CODE END TESTING*/
 
+
+		/* Code BEGIN MASTER*/
+//		time_diff = current_time - prev_time; //calculate time difference
+//
+//		if (time_diff >= LOOP_TIME_INTERVAL) {
+//
+//			// if 100ms have elapsed since last time this condition became true,
+//			// then execute your program functions
+//
+//			/* execute your program functions*/
+//
 //			//Out of range APPS value check
 //			if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
 //				APPS_Failure = true;
@@ -264,7 +283,7 @@ int main(void) {
 //				HAL_MAX_DELAY);
 //
 //				//start 100ms implausibility timer
-//			} //end if
+//			} //end else if
 //
 //			else {
 //				APPS_Failure = false;
@@ -290,16 +309,21 @@ int main(void) {
 //					HAL_MAX_DELAY);
 //
 //					//Add other tasks to execute
-//				}									//end if
+//				}						//end if
 //
-//			}									// end else
-			prev_time = current_time; // update previous time
+//			} // end else
+//			prev_time = current_time; // update previous time
+//
+//		} else {
+//			current_time = HAL_GetTick();
+//		}
+//		main_loop_count++;
+		/*CODE END MASTER*/
 
-		} else {
-			current_time = HAL_GetTick();
-		}
-		main_loop_count++;
-
+		/*Old code
+		 *
+		 *
+		 */
 ////		TxHeader.ExtId = 0x00000CFF; //Message ID for "Drive Enable" for motor controller
 //		TxHeader.ExtId = 3327; //Message ID for "Drive Enable" for motor controller
 //		//		TxHeader.StdId = 0x0C;
@@ -319,7 +343,6 @@ int main(void) {
 //			Error_Handler();
 //		} //end if
 //
-
 ////		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
 ////		TxHeader.ExtId = 0x000003FF; //Message ID for "Set ERPM" for motor controller
 //		TxHeader.ExtId = 1023; //Message ID for "Set ERPM" for motor controller
@@ -338,7 +361,6 @@ int main(void) {
 //				!= HAL_OK) {
 //			Error_Handler();
 //		} //end if
-
 //		//Out of range Brake pressure sensor value check
 //		if ((bpsVal[0] < bps_MIN) || (bpsVal[0] > bps_MAX)) {
 //			//Send CAN message to shutdown power to motor
@@ -420,8 +442,8 @@ int main(void) {
 //			} //end else
 //
 //		} //end else
-
 //		HAL_Delay(50);
+		/*Old code Ending */
 
 	} //end infinite while loop
 	/* USER CODE END 3 */
