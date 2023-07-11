@@ -35,8 +35,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 //#define APPS_BUF_LEN 4096
-const uint32_t bpsThreshold = 3500; //need to set to store the signal value which corresponds to brakes being pressed
-const uint32_t bps_MIN = 500; //Below range ADC value for BPS
+const uint32_t bpsThreshold = 2000; //need to set to store the signal value which corresponds to brakes being pressed
+const uint32_t bps_MIN = 400; //Below range ADC value for BPS
 const uint32_t bps_MAX = 3900; //Above range ADC value for BPS
 const uint32_t APPS_0_MIN = 200; //Below range ADC value for APPS_0
 const uint32_t APPS_0_MAX = 2800; //Above range ADC value for APPS_0
@@ -71,8 +71,13 @@ uint32_t appsVal[2]; //to store APPS ADC values
 uint32_t bpsVal[2]; //to store Brake Pressure Sensor values
 
 uint8_t BMS_Current_Limit;
-uint8_t AC_Max_Current = 100;
-uint32_t BMS_Current_Limit_ID = 0xA07;
+float DC_Max_Current = 100.0;
+float AC_Max_Current = 100.0 / 0.7071; //Peak not RMS
+
+//CAN Message ID's
+uint32_t BMS_Current_Limit_ID = 0x00000A07;
+uint32_t Drive_Enable_ID = 0x00000C07;
+uint32_t Set_AC_Current_ID = 0x00000107;
 
 bool ready_to_drive = false;
 
@@ -120,8 +125,9 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 	if (RxHeader.ExtId == BMS_Current_Limit_ID) {
 		bms_Current_Limit_Ready = true;
 		BMS_Current_Limit = RxData[1] / 10;
-//		sprintf(msg, "BMS_Current_Limit (%ld) = %d \r\n", RxHeader.ExtId, BMS_Current_Limit);
-//		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
+		sprintf(msg, "BMS_Current_Limit (%ld) = %d \r\n", RxHeader.ExtId,
+				BMS_Current_Limit);
+		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
 	}
 
 //
@@ -168,9 +174,9 @@ int main(void) {
 	MX_ADC3_Init();
 	MX_CAN1_Init();
 	/* USER CODE BEGIN 2 */
-	HAL_ADC_Start_DMA(&hadc1, &appsVal[0], 1); //start the ADC for APPS 1 (Linear Sensor) in DMA mode
-//	HAL_ADC_Start_DMA(&hadc3, bpsVal, 2); //start the ADC for Brake Pressure Sensors in DMA mode
-	HAL_ADC_Start_DMA(&hadc2, &appsVal[1], 1); //start the ADC for APPS 2 (Rotational Sensor) in DMA mode
+	HAL_ADC_Start_DMA(&hadc1, &appsVal[0], 1); //start the ADC for APPS 1 (Rotational Sensor) in DMA mode
+	HAL_ADC_Start_DMA(&hadc2, &appsVal[1], 1); //start the ADC for APPS 2 (Linear Sensor) in DMA mode
+	HAL_ADC_Start_DMA(&hadc3, &bpsVal[0], 1); //start the ADC for Brake Pressure Sensors in DMA mode
 
 	//Start the CAN Bus
 	HAL_CAN_Start(&hcan1);
@@ -183,26 +189,23 @@ int main(void) {
 
 	//Setting Required Data Values for CAN frame
 	TxHeader.DLC = 8;	//data length in bytes
-//	TxHeader.StdId = 0;
-//	TxHeader.ExtId = 0;
 //	TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
 	TxHeader.IDE = CAN_ID_EXT; //specify Extended CAN ID
 	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
-//	TxHeader.StdId = 0x23;	//CAN ID of this device
 	TxHeader.TransmitGlobalTime = DISABLE;
 
 //	 Ready to Drive check (returns true if ready and false if not ready)
-//	ready_to_drive = Ready_to_Drive();
-//
-//	if (ready_to_drive) {
-//		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-//		//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-//	}
+	ready_to_drive = Ready_to_Drive();
+
+	if (ready_to_drive) {
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+		//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+	}
 
 	uint32_t apps_Pedal_Position[2]; //to store APPS Pedal Position Values (in %)
 	char msg[256];
-	uint32_t ERPM_command;
 	uint32_t AC_Current_Command;
+//	uint32_t ERPM_command;
 
 	//initialize counters
 	prev_time = 0;
@@ -232,17 +235,84 @@ int main(void) {
 //			sprintf(msg1, "BPS1 = %d \r\n BPS2 = %d \r\n",bpsVal[0],bpsVal[1]);
 			APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
 
-			AC_Current_Command = apps_Pedal_Position[0] / 100.0 * AC_Max_Current;
+			AC_Current_Command = apps_Pedal_Position[0] / 100.0* AC_Max_Current;
 
-			if (AC_Current_Command > BMS_Current_Limit){
-				AC_Current_Command = BMS_Current_Limit;
-			}
+			//Sending Drive Enable CAN message
+			TxHeader.ExtId = Drive_Enable_ID; //Message ID for "Drive Enable" for motor controller
+//			TxHeader.ExtId = 3079; //Message ID for "Drive Enable" for motor controller
+
+			TxData[0] = 1;
+			TxData[1] = 0x00;
+			TxData[2] = 0x00;
+			TxData[3] = 0x00;
+			TxData[4] = 0x00;
+			TxData[5] = 0x00;
+			TxData[6] = 0x00;
+			TxData[7] = 0x00;
+
+			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+					!= HAL_OK) {
+				Error_Handler();
+			} //end if
+
+			//Sending AC Current CAN message
+			TxHeader.ExtId = Set_AC_Current_ID; //Message ID for "Set AC Current" for motor controller
+//			TxHeader.ExtId = 263; //Message ID for "Set ERPM" for motor controller
+
+//			Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
+			uint8_t AC_Current_Command_high_byte = (AC_Current_Command >> 8)
+					& 0xFF; // shift right by 8 bits and mask with 0xFF
+			uint8_t AC_Current_Command_low_byte = AC_Current_Command & 0xFF; // mask with 0xFF to get the lower 8 bits
+
+			//AC Current (Peak not RMS)
+			TxData[0] = AC_Current_Command_high_byte;
+			TxData[1] = AC_Current_Command_low_byte;
+			TxData[2] = 0x00;
+			TxData[3] = 0x00;
+			TxData[4] = 0x00;
+			TxData[5] = 0x00;
+			TxData[6] = 0x00;
+			TxData[7] = 0x00;
+
+			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
+					!= HAL_OK) {
+				Error_Handler();
+			} //end if
 
 			sprintf(msg,
-					"APPS_1 = %lu \t APPS_2 = %lu \t Current Command = %lu \r\n",
-					appsVal[0], appsVal[1], AC_Current_Command);
+					"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t AC_Current_Command = %lu \r\n",
+					appsVal[0], appsVal[1], apps_Pedal_Position[0],
+					AC_Current_Command);
 			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
 			HAL_MAX_DELAY);
+
+//			sprintf(msg, "%lu \t %lu \t %lu \t %lu \r\n", appsVal[0],
+//					appsVal[1], bpsVal[0], bpsVal[1]);
+//			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+//			HAL_MAX_DELAY);
+
+//			if (!(abs(apps_Pedal_Position[0] - apps_Pedal_Position[1]) <= 10)) {
+//
+//				sprintf(msg, "APPS_Implausibility \r\n");
+//				HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+//				HAL_MAX_DELAY);
+//
+//				//Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
+//				//			uint8_t ERPM_high_byte = (ERPM_command >> 8) & 0xFF; // shift right by 8 bits and mask with 0xFF
+//				//			uint8_t EPRM_low_byte = ERPM_command & 0xFF; // mask with 0xFF to get the lower 8 bits
+//
+//			}
+//			AC_Current_Command = apps_Pedal_Position[0] / 100.0 * AC_Max_Current;
+//
+//			if (AC_Current_Command > BMS_Current_Limit){
+//				AC_Current_Command = BMS_Current_Limit;
+//			}
+//
+//			sprintf(msg,
+//					"APPS_1 = %lu \t APPS_2 = %lu \t Current Command = %lu \r\n",
+//					appsVal[0], appsVal[1], AC_Current_Command);
+//			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+//			HAL_MAX_DELAY);
 
 			prev_time = current_time; // update previous time
 
@@ -251,7 +321,6 @@ int main(void) {
 		}
 		main_loop_count++;
 		/*CODE END TESTING*/
-
 
 		/* Code BEGIN MASTER*/
 //		time_diff = current_time - prev_time; //calculate time difference
@@ -619,13 +688,13 @@ static void MX_ADC3_Init(void) {
 	hadc3.Instance = ADC3;
 	hadc3.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
 	hadc3.Init.Resolution = ADC_RESOLUTION_12B;
-	hadc3.Init.ScanConvMode = ENABLE;
+	hadc3.Init.ScanConvMode = DISABLE;
 	hadc3.Init.ContinuousConvMode = ENABLE;
 	hadc3.Init.DiscontinuousConvMode = DISABLE;
 	hadc3.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
 	hadc3.Init.ExternalTrigConv = ADC_SOFTWARE_START;
 	hadc3.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-	hadc3.Init.NbrOfConversion = 2;
+	hadc3.Init.NbrOfConversion = 1;
 	hadc3.Init.DMAContinuousRequests = ENABLE;
 	hadc3.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
 	if (HAL_ADC_Init(&hadc3) != HAL_OK) {
@@ -637,14 +706,6 @@ static void MX_ADC3_Init(void) {
 	sConfig.Channel = ADC_CHANNEL_10;
 	sConfig.Rank = 1;
 	sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
-	if (HAL_ADC_ConfigChannel(&hadc3, &sConfig) != HAL_OK) {
-		Error_Handler();
-	}
-
-	/** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-	 */
-	sConfig.Channel = ADC_CHANNEL_13;
-	sConfig.Rank = 2;
 	if (HAL_ADC_ConfigChannel(&hadc3, &sConfig) != HAL_OK) {
 		Error_Handler();
 	}
@@ -780,11 +841,11 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-	/*Configure GPIO pin : Start_Button_Pin */
-	GPIO_InitStruct.Pin = Start_Button_Pin;
+	/*Configure GPIO pins : Start_Button_Pin APPS_1_SW_Pin APPS_2_SW_Pin */
+	GPIO_InitStruct.Pin = Start_Button_Pin | APPS_1_SW_Pin | APPS_2_SW_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(Start_Button_GPIO_Port, &GPIO_InitStruct);
+	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
 	/*Configure GPIO pin : Ready_to_Drive_Sound_Pin */
 	GPIO_InitStruct.Pin = Ready_to_Drive_Sound_Pin;
@@ -814,8 +875,13 @@ static bool Ready_to_Drive(void) {
 	for (;;) {
 		//checking if brakes are pressed, start button is pressed and HV Present at the same time
 		if ((bpsVal[0] >= bpsThreshold)
-				&& (!HAL_GPIO_ReadPin(Start_Button_GPIO_Port, Start_Button_Pin))
-				&& (!HAL_GPIO_ReadPin(HV_Present_GPIO_Port, HV_Present_Pin))) {
+				&& (!HAL_GPIO_ReadPin(Start_Button_GPIO_Port,
+				Start_Button_Pin))) {
+
+//			if ((bpsVal[0] >= bpsThreshold)
+//					&& (!HAL_GPIO_ReadPin(Start_Button_GPIO_Port,
+//					Start_Button_Pin))
+//					&& (!HAL_GPIO_ReadPin(HV_Present_GPIO_Port, HV_Present_Pin)))
 
 			//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer
 
@@ -835,7 +901,7 @@ static bool Ready_to_Drive(void) {
 
 			return true;
 		} //end if
-		HAL_Delay(1000);
+		HAL_Delay(100);
 	} //end for loop
 
 	return false; //shouldn't get to here
@@ -845,22 +911,22 @@ static bool Ready_to_Drive(void) {
 static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 		uint32_t apps_PP[]) {
 
-	apps_PP[0] = 0.08849557 * (*appsVal_0) - 37.168141592;
-
-	if (apps_PP[0] < 0) {
-		apps_PP[0] = 0;
-	}
-	if (apps_PP[0] > 100) {
-		apps_PP[0] = 100;
-	}
-
-	apps_PP[1] = 0.05405405 * (*appsVal_1) - 35.13513513;
+	apps_PP[1] = 0.08849557 * (*appsVal_1) - 37.168141592;
 
 	if (apps_PP[1] < 0) {
 		apps_PP[1] = 0;
 	}
 	if (apps_PP[1] > 100) {
 		apps_PP[1] = 100;
+	}
+
+	apps_PP[0] = 0.05405405 * (*appsVal_0) - 35.13513513;
+
+	if (apps_PP[0] < 0) {
+		apps_PP[0] = 0;
+	}
+	if (apps_PP[0] > 100) {
+		apps_PP[0] = 100;
 	}
 
 //	apps_PP[0] = 0.0495 * (*appsVal_0) - 24.28;
