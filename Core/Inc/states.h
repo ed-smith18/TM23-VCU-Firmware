@@ -1,0 +1,22 @@
+/*
+ * states.h
+ *
+ *  Created on: Aug 2, 2023
+ *      Author: edams
+ */
+
+#ifndef SRC_STATES_H_
+#define SRC_STATES_H_
+
+enum STATEVAR {
+	STANDBY_STATE, RUNNING_STATE, BSPD_TRIP_STATE, ERROR_STATE, UNDEFINED_STATE
+};
+
+enum {
+	ERR_NONE = 0b00000000,
+	ERR_NO_BRAKE_SENSOR = 0b00000001,
+	ERR_NO_THROTTLE_SENSOR = 0b00000010,
+	ERR_STATE_UNDEFINED = 0b10000000,
+};
+
+#endif /* SRC_STATES_H_ */

@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <states.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -97,9 +98,12 @@ static void MX_ADC2_Init(void);
 static void MX_ADC3_Init(void);
 static void MX_CAN1_Init(void);
 /* USER CODE BEGIN PFP */
-static bool Ready_to_Drive(void);
+static void Ready_to_Drive(void);
 static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 		uint32_t apps_PP[]);
+static void running_State(void);
+static void BSPD_Trip_State(void);
+static void errorState(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -115,6 +119,11 @@ uint32_t TxMailbox;
 char msg[256];
 char msg1[256];
 uint32_t current_time, time_diff, prev_time, main_loop_count;
+
+//FSM Definitions
+SRC_STATES_H_ current_State = STANDBY_STATE;
+SRC_STATES_H_ last_State = UNDEFINED_STATE;
+int errorCode = ERR_NONE;
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 
@@ -187,17 +196,10 @@ int main(void) {
 	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
 	TxHeader.TransmitGlobalTime = DISABLE;
 
-//	 Ready to Drive check (returns true if ready and false if not ready)
-	ready_to_drive = Ready_to_Drive();
-
-	if (ready_to_drive) {
-		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-		//HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-	}
 
 	uint32_t apps_Pedal_Position[2]; //to store APPS Pedal Position Values (in %)
 	char msg[256];
-	uint32_t AC_Current_Command;
+//	uint32_t AC_Current_Command;
 //	uint32_t ERPM_command;
 
 	//initialize counters
@@ -215,6 +217,31 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
+		// FSM (Finite State Machine)
+		switch (current_State) {
+
+		case STANDBY_STATE:
+			Ready_to_Drive();
+			break;
+
+		case RUNNING_STATE:
+			running_State();
+			break;
+
+		case BSPD_TRIP_STATE:
+			BSPD_Trip_State();
+			break;
+
+		case ERROR_STATE:
+			errorState();
+
+		default: // You tried to enter a state not defined in this switch-case
+			current_State = ERROR_STATE;
+			errorCode |= ERR_STATE_UNDEFINED;
+			errorState();
+
+		} //end switch case
+
 		time_diff = current_time - prev_time; //calculate time difference
 
 		if (time_diff >= LOOP_TIME_INTERVAL) {
@@ -224,62 +251,8 @@ int main(void) {
 
 			/* execute your program functions*/
 			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-//			sprintf(msg1, "BPS1 = %d \r\n BPS2 = %d \r\n",bpsVal[0],bpsVal[1]);
-			APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
-
-			AC_Current_Command = apps_Pedal_Position[0] / 100.0
-					* AC_Max_Current;
-
-			if (AC_Current_Command > BMS_Current_Limit * SQRT_2) {
-				AC_Current_Command = BMS_Current_Limit * SQRT_2;
-			} //end if
-
-			//Sending Drive Enable CAN message
-			TxHeader.ExtId = Drive_Enable_ID; //Message ID for "Drive Enable" for motor controller
-//			TxHeader.ExtId = 3079; //Message ID for "Drive Enable" for motor controller
-
-			TxData[0] = 1;
-			TxData[1] = 0x00;
-			TxData[2] = 0x00;
-			TxData[3] = 0x00;
-			TxData[4] = 0x00;
-			TxData[5] = 0x00;
-			TxData[6] = 0x00;
-			TxData[7] = 0x00;
-
-			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-					!= HAL_OK) {
-				Error_Handler();
-			} //end if
-
-			//Sending AC Current CAN message
-			TxHeader.ExtId = Set_AC_Current_ID; //Message ID for "Set AC Current" for motor controller
-//			TxHeader.ExtId = 263; //Message ID for "Set ERPM" for motor controller
-
-//			Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
-			uint8_t AC_Current_Command_high_byte = (AC_Current_Command >> 8)
-					& 0xFF; // shift right by 8 bits and mask with 0xFF
-			uint8_t AC_Current_Command_low_byte = AC_Current_Command & 0xFF; // mask with 0xFF to get the lower 8 bits
-
-			//AC Current (Peak not RMS)
-			TxData[0] = AC_Current_Command_high_byte;
-			TxData[1] = AC_Current_Command_low_byte;
-			TxData[2] = 0x00;
-			TxData[3] = 0x00;
-			TxData[4] = 0x00;
-			TxData[5] = 0x00;
-			TxData[6] = 0x00;
-			TxData[7] = 0x00;
-
-			if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-					!= HAL_OK) {
-				Error_Handler();
-			} //end if
-
-			sprintf(msg,
-					"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t AC_Current_Command = %lu \r\n",
-					appsVal[0], appsVal[1], apps_Pedal_Position[0],
-					AC_Current_Command);
+			sprintf(msg, "APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t\r\n",
+					appsVal[0], appsVal[1], apps_Pedal_Position[0]);
 			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
 			HAL_MAX_DELAY);
 
@@ -291,9 +264,9 @@ int main(void) {
 		main_loop_count++;
 
 	} //end infinite while loop
+
 	/* USER CODE END 3 */
 }
-
 /**
  * @brief System Clock Configuration
  * @retval None
@@ -605,8 +578,8 @@ static void MX_GPIO_Init(void) {
 	__HAL_RCC_GPIOB_CLK_ENABLE();
 
 	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port, Ready_to_Drive_Sound_Pin,
-			GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
+	Ready_to_Drive_Sound_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
@@ -646,7 +619,7 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
-static bool Ready_to_Drive(void) {
+static void Ready_to_Drive(void) {
 
 	for (;;) {
 		//checking if brakes are pressed, start button is pressed and HV Present at the same time
@@ -675,12 +648,12 @@ static bool Ready_to_Drive(void) {
 			//HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
 			//Ready_to_Drive_Sound_Pin, GPIO_PIN_RESET);
 
-			return true;
+			running_State();
 		} //end if
 		HAL_Delay(100);
 	} //end for loop
 
-	return false; //shouldn't get to here
+	return; //shouldn't get to here
 
 } //end Ready_to_Drive()
 
@@ -706,6 +679,19 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 	}
 
 } //end APPS_Mapping()
+
+
+static void running_State(void) {
+
+} //end running()
+
+static void BSPD_Trip_State(void) {
+
+} //end running()
+
+static void errorState(void) {
+
+} //end errorState()
 
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc) {
 
