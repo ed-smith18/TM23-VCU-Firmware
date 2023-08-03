@@ -69,6 +69,7 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 //uint16_t apps_Buf[APPS_BUF_LEN];
 uint32_t appsVal[2]; //to store APPS ADC values
+uint32_t apps_Pedal_Position[2]; //to store APPS Pedal Position Values (in %)
 
 uint32_t bpsVal[2]; //to store Brake Pressure Sensor values
 
@@ -103,7 +104,7 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 		uint32_t apps_PP[]);
 static void running_State(void);
 static void BSPD_Trip_State(void);
-static void errorState(void);
+static void error_State(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -121,9 +122,11 @@ char msg1[256];
 uint32_t current_time, time_diff, prev_time, main_loop_count;
 
 //FSM Definitions
-SRC_STATES_H_ current_State = STANDBY_STATE;
-SRC_STATES_H_ last_State = UNDEFINED_STATE;
+STATEVAR current_State = STANDBY_STATE;
+STATEVAR last_State = UNDEFINED_STATE;
 int errorCode = ERR_NONE;
+
+
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 
@@ -196,8 +199,6 @@ int main(void) {
 	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
 	TxHeader.TransmitGlobalTime = DISABLE;
 
-
-	uint32_t apps_Pedal_Position[2]; //to store APPS Pedal Position Values (in %)
 	char msg[256];
 //	uint32_t AC_Current_Command;
 //	uint32_t ERPM_command;
@@ -207,6 +208,8 @@ int main(void) {
 	current_time = 0;
 	time_diff = 0;
 	main_loop_count = 0;
+
+
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -233,12 +236,12 @@ int main(void) {
 			break;
 
 		case ERROR_STATE:
-			errorState();
+			error_State();
 
 		default: // You tried to enter a state not defined in this switch-case
 			current_State = ERROR_STATE;
 			errorCode |= ERR_STATE_UNDEFINED;
-			errorState();
+			error_State();
 
 		} //end switch case
 
@@ -648,12 +651,12 @@ static void Ready_to_Drive(void) {
 			//HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
 			//Ready_to_Drive_Sound_Pin, GPIO_PIN_RESET);
 
-			running_State();
+			current_State = RUNNING_STATE;
+			return;
 		} //end if
 		HAL_Delay(100);
 	} //end for loop
 
-	return; //shouldn't get to here
 
 } //end Ready_to_Drive()
 
@@ -664,32 +667,46 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 
 	if (apps_PP[1] < 0) {
 		apps_PP[1] = 0;
-	}
+	}//end if
 	if (apps_PP[1] > 100) {
 		apps_PP[1] = 100;
-	}
+	}//end if
 
 	apps_PP[0] = 0.05405405 * (*appsVal_0) - 35.13513513;
 
 	if (apps_PP[0] < 0) {
 		apps_PP[0] = 0;
-	}
+	}//end if
 	if (apps_PP[0] > 100) {
 		apps_PP[0] = 100;
-	}
+	}//end if
 
 } //end APPS_Mapping()
 
-
 static void running_State(void) {
+
+	// Turn Drive Enable ON (Toggle GPIO ON)
+	APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
+
+	if ((apps_Pedal_Position[0] > 25) && (bpsVal[0] > bpsThreshold)) {
+		current_State = BSPD_TRIP_STATE;
+	} //end if
 
 } //end running()
 
 static void BSPD_Trip_State(void) {
 
+	// Turn Drive Enable OFF (Toggle GPIO OFF)
+
+	if ((apps_Pedal_Position[0] < 5) && bpsVal[0] < bpsThreshold) {
+		current_State = RUNNING_STATE;
+	} //end if
+
 } //end running()
 
-static void errorState(void) {
+static void error_State(void) {
+
+	// Should get here if throttle or brake sensor are out of range
 
 } //end errorState()
 

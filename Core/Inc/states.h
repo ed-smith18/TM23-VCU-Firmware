@@ -5,12 +5,12 @@
  *      Author: edams
  */
 
-#ifndef SRC_STATES_H_
-#define SRC_STATES_H_
+#ifndef STATEVAR
+#define STATEVAR
 
-enum STATEVAR {
+typedef enum {
 	STANDBY_STATE, RUNNING_STATE, BSPD_TRIP_STATE, ERROR_STATE, UNDEFINED_STATE
-};
+} STATEVAR;
 
 enum {
 	ERR_NONE = 0b00000000,
