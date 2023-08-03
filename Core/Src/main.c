@@ -45,6 +45,7 @@ const uint32_t APPS_1_MAX = 3900; //Above range ADC value for APPS_1
 
 //#define LOOP_TIME_INTERVAL  0.001 //loop time in counts x milliseconds, 0.001 x 0.001 == 0.001s -> 10000Hz
 #define LOOP_TIME_INTERVAL  100 //loop time in counts x milliseconds, 100 x 0.001 == 0.1s -> 10Hz
+#define SQRT_2 1.4142
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -72,7 +73,7 @@ uint32_t bpsVal[2]; //to store Brake Pressure Sensor values
 
 uint8_t BMS_Current_Limit;
 float DC_Max_Current = 100.0;
-float AC_Max_Current = 100.0 / 0.7071; //Peak not RMS
+float AC_Max_Current = 100.0 * SQRT_2; //Peak not RMS
 
 //CAN Message ID's
 uint32_t BMS_Current_Limit_ID = 0x00000A07;
@@ -214,7 +215,6 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
-		/* Code BEGIN TESTING*/
 		time_diff = current_time - prev_time; //calculate time difference
 
 		if (time_diff >= LOOP_TIME_INTERVAL) {
@@ -227,7 +227,12 @@ int main(void) {
 //			sprintf(msg1, "BPS1 = %d \r\n BPS2 = %d \r\n",bpsVal[0],bpsVal[1]);
 			APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
 
-			AC_Current_Command = apps_Pedal_Position[0] / 100.0* AC_Max_Current;
+			AC_Current_Command = apps_Pedal_Position[0] / 100.0
+					* AC_Max_Current;
+
+			if (AC_Current_Command > BMS_Current_Limit * SQRT_2) {
+				AC_Current_Command = BMS_Current_Limit * SQRT_2;
+			} //end if
 
 			//Sending Drive Enable CAN message
 			TxHeader.ExtId = Drive_Enable_ID; //Message ID for "Drive Enable" for motor controller
@@ -278,233 +283,12 @@ int main(void) {
 			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
 			HAL_MAX_DELAY);
 
-//			sprintf(msg, "%lu \t %lu \t %lu \t %lu \r\n", appsVal[0],
-//					appsVal[1], bpsVal[0], bpsVal[1]);
-//			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-//			HAL_MAX_DELAY);
-
-//			if (!(abs(apps_Pedal_Position[0] - apps_Pedal_Position[1]) <= 10)) {
-//
-//				sprintf(msg, "APPS_Implausibility \r\n");
-//				HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-//				HAL_MAX_DELAY);
-//
-//				//Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
-//				//			uint8_t ERPM_high_byte = (ERPM_command >> 8) & 0xFF; // shift right by 8 bits and mask with 0xFF
-//				//			uint8_t EPRM_low_byte = ERPM_command & 0xFF; // mask with 0xFF to get the lower 8 bits
-//
-//			}
-//			AC_Current_Command = apps_Pedal_Position[0] / 100.0 * AC_Max_Current;
-//
-//			if (AC_Current_Command > BMS_Current_Limit){
-//				AC_Current_Command = BMS_Current_Limit;
-//			}
-//
-//			sprintf(msg,
-//					"APPS_1 = %lu \t APPS_2 = %lu \t Current Command = %lu \r\n",
-//					appsVal[0], appsVal[1], AC_Current_Command);
-//			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-//			HAL_MAX_DELAY);
-
 			prev_time = current_time; // update previous time
 
 		} else {
 			current_time = HAL_GetTick();
 		}
 		main_loop_count++;
-		/*CODE END TESTING*/
-
-		/* Code BEGIN MASTER*/
-//		time_diff = current_time - prev_time; //calculate time difference
-//
-//		if (time_diff >= LOOP_TIME_INTERVAL) {
-//
-//			// if 100ms have elapsed since last time this condition became true,
-//			// then execute your program functions
-//
-//			/* execute your program functions*/
-//
-//			//Out of range APPS value check
-//			if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
-//				APPS_Failure = true;
-//				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-//
-//				sprintf(msg, "APPS_1 Failure \r\n");
-//				HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-//				HAL_MAX_DELAY);
-//				//start 100ms implausibility timer
-//			} //end if
-//
-//			else if ((appsVal[1] < APPS_1_MIN) || (appsVal[1] > APPS_1_MAX)) {
-//				APPS_Failure = true;
-//				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-//
-//				sprintf(msg, "APPS_2 Failure \r\n");
-//				HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-//				HAL_MAX_DELAY);
-//
-//				//start 100ms implausibility timer
-//			} //end else if
-//
-//			else {
-//				APPS_Failure = false;
-//				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-//
-//				APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
-//
-//				if (abs(apps_Pedal_Position[0] - apps_Pedal_Position[1])
-//						<= 10) {
-//
-//					ERPM_command = apps_Pedal_Position[0] * 1.75 / 100.0
-//							* 35000.0;
-//
-//					//Shifting and masking bits to split the 16 - bit value into two 8 bit values to fit in the CAN data frame
-//					//			uint8_t ERPM_high_byte = (ERPM_command >> 8) & 0xFF; // shift right by 8 bits and mask with 0xFF
-//					//			uint8_t EPRM_low_byte = ERPM_command & 0xFF; // mask with 0xFF to get the lower 8 bits
-//
-//					sprintf(msg,
-//							"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t ERPM = %lu \r\n",
-//							appsVal[0], appsVal[1], apps_Pedal_Position[0],
-//							ERPM_command);
-//					HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-//					HAL_MAX_DELAY);
-//
-//					//Add other tasks to execute
-//				}						//end if
-//
-//			} // end else
-//			prev_time = current_time; // update previous time
-//
-//		} else {
-//			current_time = HAL_GetTick();
-//		}
-//		main_loop_count++;
-		/*CODE END MASTER*/
-
-		/*Old code
-		 *
-		 *
-		 */
-////		TxHeader.ExtId = 0x00000CFF; //Message ID for "Drive Enable" for motor controller
-//		TxHeader.ExtId = 3327; //Message ID for "Drive Enable" for motor controller
-//		//		TxHeader.StdId = 0x0C;
-////		TxData[0] = 0x01;
-//		TxData[0] = 1;
-//		//		TxData[1] = 0x00;
-//		//		TxData[2] = 0x00;
-//		//		TxData[3] = 0x00;
-//		//		TxData[4] = 0x00;
-//		//		TxData[5] = 0x00;
-//		//		TxData[6] = 0x00;
-//		//		TxData[7] = 0x00;
-//
-//		//				Send out CAN message for testing
-//		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-//				!= HAL_OK) {
-//			Error_Handler();
-//		} //end if
-//
-////		TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-////		TxHeader.ExtId = 0x000003FF; //Message ID for "Set ERPM" for motor controller
-//		TxHeader.ExtId = 1023; //Message ID for "Set ERPM" for motor controller
-//
-////		TxData[0] = 0x00;
-////		TxData[1] = 0x00;
-////		TxData[2] = 0x03;
-////		TxData[3] = 0xE8;
-//
-//		TxData[0] = 0;
-//		TxData[1] = 0;
-//		TxData[2] = ERPM_high_byte;
-//		TxData[3] = EPRM_low_byte;
-//
-//		if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox)
-//				!= HAL_OK) {
-//			Error_Handler();
-//		} //end if
-//		//Out of range Brake pressure sensor value check
-//		if ((bpsVal[0] < bps_MIN) || (bpsVal[0] > bps_MAX)) {
-//			//Send CAN message to shutdown power to motor
-//			//start 100ms implausibility timer
-//			//Should also check Brake pressure sensor 2
-//		}
-//
-//
-//		else {
-//			APPS_Failure = false;
-//
-//			APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
-//
-//			sprintf(msg,
-//					"APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t PP2 = %lu \r\n",
-//					appsVal[0], appsVal[1], apps_Pedal_Position[0],
-//					apps_Pedal_Position[1]);
-//			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-//			HAL_MAX_DELAY);
-//
-//			if (abs(apps_Pedal_Position[0] - apps_Pedal_Position[1]) <= 10) {
-//				//reset the 100ms timer if started since there is no >10% implausibility
-////				HAL_TIM_Base_Stop(&htim10);
-////				timer_100ms = 0;
-////				implausibility = false;
-////				//osTimerStop(implausibility_TimerHandle);
-////
-//				//Check if requested current based on throttle position is <= BMS Current Limit
-//				//If it is greater than current limit, take the BMS current limit as the max allowable
-//				//current to discharge from the battery pack.
-//
-//				//Broadcast messages sent to motor controller to control motor torque
-//				TxData[0] = 0x1A; //Message ID for "Set AC Current" for motor controller
-//				TxData[1] = 0x1F; //Node ID for Standard CAN message
-//				TxData[2] = 10 * apps_Pedal_Position[0]; //Will take the linear sensor as the primary sensor for sending signals to motor controller. (Needs to be scaled by 10 first)
-//
-//
-//				if (!APPS_Failure) {
-//					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-//					//Send out CAN message
-//					if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData,
-//							&TxMailbox) != HAL_OK) {
-//						Error_Handler();
-//					} //end if
-//
-//				} //end if
-//
-//				/**
-//				 * Need to send CAN messages before motor controller times out
-//				 * Recommended settings are to send out CAN message every half the timeout
-//				 * period. I.e if timeout period is 1000ms, then send a CAN message every 500ms.
-//				 * Need to configure actual timeout period for motor controller using DTI tool.
-//				 * We will set it to 50ms for now.
-//				 */
-//
-//			} //end if
-//
-//			else {
-//
-//				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-//				//Should only get here if there is a >10% difference between APPS
-//
-//				// check to see if timer has run for >100ms then send CAN message to set motor torque to zero
-////				if (implausibility) {
-////					if (__HAL_TIM_GET_COUNTER(&htim10) - timer_100ms >= 10000) {
-////						//shutdown power to motor
-////					} else {
-////						continue; //go back to beginning of loop (not sure if needed)
-////					}
-////				} //end if
-////				else {
-////					//start 100ms timer if not started
-////					HAL_TIM_Base_Start(&htim10);
-////					timer_100ms = __HAL_TIM_GET_COUNTER(&htim10);
-////					implausibility = true;
-////
-////				} //end else
-//
-//			} //end else
-//
-//		} //end else
-//		HAL_Delay(50);
-		/*Old code Ending */
 
 	} //end infinite while loop
 	/* USER CODE END 3 */
@@ -922,7 +706,6 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 	}
 
 } //end APPS_Mapping()
-
 
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc) {
 
