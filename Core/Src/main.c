@@ -128,15 +128,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 		sprintf(msg, "BMS_Current_Limit (%ld) = %d \r\n", RxHeader.ExtId,
 				BMS_Current_Limit);
 		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
-	}
-
-//
-//	sprintf(msg, "CAN Data = %lu \n %d %d %d %d %d %d %d %d %d \r\n",
-//			RxHeader.ExtId, RxData[0], RxData[1], RxData[2], RxData[3],
-//			RxData[4], RxData[5], RxData[6], RxData[7], RxData[8]);
-//
-//	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
-
+	} //end if
 }
 /* USER CODE END 0 */
 
@@ -929,52 +921,8 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 		apps_PP[0] = 100;
 	}
 
-//	apps_PP[0] = 0.0495 * (*appsVal_0) - 24.28;
-//
-//	if (apps_PP[0] < 0) {
-//		apps_PP[0] = 0;
-//	}
-//	if (apps_PP[0] > 100) {
-//		apps_PP[0] = 100;
-//	}
-//
-//	apps_PP[1] = 0.034 * (*appsVal_1) - 24.49;
-//
-//	if (apps_PP[1] < 0) {
-//		apps_PP[1] = 0;
-//	}
-//	if (apps_PP[1] > 100) {
-//		apps_PP[1] = 100;
-//	}
-
 } //end APPS_Mapping()
 
-//int dec_to_hexa_conversion(int decimal_Number) {
-//	int i = 1, j, temp;
-//	char hexa_Number[100];
-//
-//	// if decimal number is not
-//	// equal to zero then enter in
-//	// to the loop and execute the
-//	// statements
-//	while (decimal_Number != 0) {
-//		temp = decimal_Number % 16;
-//
-//		// converting decimal number
-//		// in to a hexa decimal
-//		// number
-//		if (temp < 10)
-//			temp = temp + 48;
-//		else
-//			temp = temp + 55;
-//		hexa_Number[i++] = temp;
-//		decimal_Number = decimal_Number / 16;
-//	}
-//	// printing the hexa decimal number
-//	printf("Hexadecimal value is: ");
-//	for (j = i - 1; j > 0; j--)
-//		printf("%c", hexa_Number[j]);
-//}        //end dec_to_hexa_conversion
 
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc) {
 
