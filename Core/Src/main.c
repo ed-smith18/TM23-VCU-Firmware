@@ -126,23 +126,21 @@ STATEVAR current_State = STANDBY_STATE;
 STATEVAR last_State = UNDEFINED_STATE;
 int errorCode = ERR_NONE;
 
-
-
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
-
-	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
-		Error_Handler();
-	}
-
-	//Received message from BMS about current limit (Need to config. CAN filter, so VCU only accepts messages from BMS based on BMS CAN I.D)
-	if (RxHeader.ExtId == BMS_Current_Limit_ID) {
-		bms_Current_Limit_Ready = true;
-		BMS_Current_Limit = RxData[1] / 10;
-		sprintf(msg, "BMS_Current_Limit (%ld) = %d \r\n", RxHeader.ExtId,
-				BMS_Current_Limit);
-		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
-	} //end if
-}
+//void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+//
+//	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
+//		Error_Handler();
+//	}
+//
+//	//Received message from BMS about current limit (Need to config. CAN filter, so VCU only accepts messages from BMS based on BMS CAN I.D)
+//	if (RxHeader.ExtId == BMS_Current_Limit_ID) {
+//		bms_Current_Limit_Ready = true;
+//		BMS_Current_Limit = RxData[1] / 10;
+//		sprintf(msg, "BMS_Current_Limit (%ld) = %d \r\n", RxHeader.ExtId,
+//				BMS_Current_Limit);
+//		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
+//	} //end if
+//}
 /* USER CODE END 0 */
 
 /**
@@ -184,20 +182,20 @@ int main(void) {
 	HAL_ADC_Start_DMA(&hadc3, &bpsVal[0], 1); //start the ADC for Brake Pressure Sensors in DMA mode
 
 	//Start the CAN Bus
-	HAL_CAN_Start(&hcan1);
-
-//	Initialize the CAN RX Interrupt
-	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
-			!= HAL_OK) {
-		Error_Handler();
-	}
-
-	//Setting Required Data Values for CAN frame
-	TxHeader.DLC = 8;	//data length in bytes
-//	TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
-	TxHeader.IDE = CAN_ID_EXT; //specify Extended CAN ID
-	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
-	TxHeader.TransmitGlobalTime = DISABLE;
+//	HAL_CAN_Start(&hcan1);
+//
+////	Initialize the CAN RX Interrupt
+//	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
+//			!= HAL_OK) {
+//		Error_Handler();
+//	}
+//
+//	//Setting Required Data Values for CAN frame
+//	TxHeader.DLC = 8;	//data length in bytes
+////	TxHeader.IDE = CAN_ID_STD; //specify standard CAN ID
+//	TxHeader.IDE = CAN_ID_EXT; //specify Extended CAN ID
+//	TxHeader.RTR = CAN_RTR_DATA; //specifies we are sending a CAN frame
+//	TxHeader.TransmitGlobalTime = DISABLE;
 
 	char msg[256];
 //	uint32_t AC_Current_Command;
@@ -208,7 +206,6 @@ int main(void) {
 	current_time = 0;
 	time_diff = 0;
 	main_loop_count = 0;
-
 
 	/* USER CODE END 2 */
 
@@ -254,6 +251,9 @@ int main(void) {
 
 			/* execute your program functions*/
 			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
+			APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
+
 			sprintf(msg, "APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t\r\n",
 					appsVal[0], appsVal[1], apps_Pedal_Position[0]);
 			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
@@ -657,7 +657,6 @@ static void Ready_to_Drive(void) {
 		HAL_Delay(100);
 	} //end for loop
 
-
 } //end Ready_to_Drive()
 
 static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
@@ -667,46 +666,70 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 
 	if (apps_PP[1] < 0) {
 		apps_PP[1] = 0;
-	}//end if
+	} //end if
 	if (apps_PP[1] > 100) {
 		apps_PP[1] = 100;
-	}//end if
+	} //end if
 
 	apps_PP[0] = 0.05405405 * (*appsVal_0) - 35.13513513;
 
 	if (apps_PP[0] < 0) {
 		apps_PP[0] = 0;
-	}//end if
+	} //end if
 	if (apps_PP[0] > 100) {
 		apps_PP[0] = 100;
-	}//end if
+	} //end if
 
 } //end APPS_Mapping()
 
 static void running_State(void) {
 
-	// Turn Drive Enable ON (Toggle GPIO ON)
+	if (last_State != RUNNING_STATE) {
+		// Turn Drive Enable ON
+		//(Toggle GPIO ON)
+	} //end if
+
 	APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
 
 	if ((apps_Pedal_Position[0] > 25) && (bpsVal[0] > bpsThreshold)) {
 		current_State = BSPD_TRIP_STATE;
 	} //end if
 
+//	if (!HV_Present) {
+//		current_State = STANDBY_STATE;
+//	}
+
 } //end running()
 
 static void BSPD_Trip_State(void) {
 
-	// Turn Drive Enable OFF (Toggle GPIO OFF)
+	if (last_State != BSPD_TRIP_STATE) {
+		// Turn Drive Enable OFF
+		//(Toggle GPIO OFF)
+	} //end if
+
+	// Send CAN message to notify in BSPD trip state
 
 	if ((apps_Pedal_Position[0] < 5) && bpsVal[0] < bpsThreshold) {
 		current_State = RUNNING_STATE;
 	} //end if
 
-} //end running()
+	//	if (!HV_Present) {
+	//		current_State = STANDBY_STATE;
+	//	}
+
+} //end BSPD_Trip_State()
 
 static void error_State(void) {
 
 	// Should get here if throttle or brake sensor are out of range
+
+	// Based on error code
+
+	// Send CAN message to notify in error state
+
+	// Turn Drive Enable OFF
+	//(Toggle GPIO OFF)
 
 } //end errorState()
 

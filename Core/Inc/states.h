@@ -1,12 +1,13 @@
 /*
  * states.h
  *
- *  Created on: Aug 2, 2023
+ *  Created on: Aug 8, 2023
  *      Author: edams
  */
 
-#ifndef STATEVAR
-#define STATEVAR
+#ifndef INC_STATES_H_
+#define INC_STATES_H_
+
 
 typedef enum {
 	STANDBY_STATE, RUNNING_STATE, BSPD_TRIP_STATE, ERROR_STATE, UNDEFINED_STATE
@@ -19,4 +20,5 @@ enum {
 	ERR_STATE_UNDEFINED = 0b10000000,
 };
 
-#endif /* SRC_STATES_H_ */
+
+#endif /* INC_STATES_H_ */
