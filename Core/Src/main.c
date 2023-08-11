@@ -256,12 +256,12 @@ int main(void) {
 			/* execute your program functions*/
 			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
 
-			APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
-
-			sprintf(msg, "APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t\r\n",
-					appsVal[0], appsVal[1], apps_Pedal_Position[0]);
-			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
-			HAL_MAX_DELAY);
+//			APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
+//
+//			sprintf(msg, "APPS_1 = %lu \t APPS_2 = %lu \t PP1 = %lu \t\r\n",
+//					appsVal[0], appsVal[1], apps_Pedal_Position[0]);
+//			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+//			HAL_MAX_DELAY);
 
 			prev_time = current_time; // update previous time
 
