@@ -99,6 +99,7 @@ static void MX_ADC2_Init(void);
 static void MX_ADC3_Init(void);
 static void MX_CAN1_Init(void);
 /* USER CODE BEGIN PFP */
+static void monitor_Signals(void);
 static void Ready_to_Drive(void);
 static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 		uint32_t apps_PP[]);
@@ -124,7 +125,7 @@ uint32_t current_time, time_diff, prev_time, main_loop_count;
 //FSM Definitions
 STATEVAR current_State = STANDBY_STATE;
 STATEVAR last_State = UNDEFINED_STATE;
-int errorCode = ERR_NONE;
+uint8_t errorCode = ERR_NONE;
 
 //void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 //
@@ -217,6 +218,9 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
+		//Should always be monitoring for signals from APPS, Brake sensors and TS active
+		monitor_Signals();
+
 		// FSM (Finite State Machine)
 		switch (current_State) {
 
@@ -270,6 +274,7 @@ int main(void) {
 
 	/* USER CODE END 3 */
 }
+
 /**
  * @brief System Clock Configuration
  * @retval None
@@ -581,8 +586,8 @@ static void MX_GPIO_Init(void) {
 	__HAL_RCC_GPIOB_CLK_ENABLE();
 
 	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
-	Ready_to_Drive_Sound_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOC, Ready_to_Drive_Sound_Pin | Drive_Enable_Output_Pin,
+			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
@@ -613,6 +618,13 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+	/*Configure GPIO pin : Drive_Enable_Output_Pin */
+	GPIO_InitStruct.Pin = Drive_Enable_Output_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(Drive_Enable_Output_GPIO_Port, &GPIO_InitStruct);
+
 	/*Configure GPIO pin : HV_Present_Pin */
 	GPIO_InitStruct.Pin = HV_Present_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -622,40 +634,63 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
+
+static void monitor_Signals(void) {
+
+	if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
+		errorCode |= ERR_NO_THROTTLE_SENSOR;
+		current_State = ERROR_STATE;
+	}
+
+	if ((bpsVal[0] < bps_MIN) || (bpsVal[0] > bps_MAX)) {
+		errorCode |= ERR_NO_BRAKE_SENSOR;
+		current_State = ERROR_STATE;
+	}
+
+	//	if (!HV_Present) {
+	//		current_State = STANDBY_STATE;
+	//	}
+
+} //end monitor_Signals()
+
 static void Ready_to_Drive(void) {
 
-	for (;;) {
-		//checking if brakes are pressed, start button is pressed and HV Present at the same time
-		if ((bpsVal[0] >= bpsThreshold)
-				&& (!HAL_GPIO_ReadPin(Start_Button_GPIO_Port,
-				Start_Button_Pin))) {
+	if (last_State != STANDBY_STATE) {
+		last_State = STANDBY_STATE;
+	}
+	//checking if brakes are pressed, start button is pressed and HV Present at the same time
+	if ((bpsVal[0] >= bpsThreshold)
+			&& (!HAL_GPIO_ReadPin(Start_Button_GPIO_Port,
+			Start_Button_Pin))) {
 
 //			if ((bpsVal[0] >= bpsThreshold)
 //					&& (!HAL_GPIO_ReadPin(Start_Button_GPIO_Port,
 //					Start_Button_Pin))
 //					&& (!HAL_GPIO_ReadPin(HV_Present_GPIO_Port, HV_Present_Pin)))
 
-			//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer
+		//sound buzzer for minimum of 1 second and maximum of 3 seconds using timer
 
-			//Method 1
-			HAL_GPIO_TogglePin(Ready_to_Drive_Sound_GPIO_Port,
-			Ready_to_Drive_Sound_Pin);
-			HAL_Delay(2000); //sound buzzer for 2 seconds
-			HAL_GPIO_TogglePin(Ready_to_Drive_Sound_GPIO_Port,
-			Ready_to_Drive_Sound_Pin);
+		//Method 1
+		HAL_GPIO_TogglePin(Ready_to_Drive_Sound_GPIO_Port,
+		Ready_to_Drive_Sound_Pin);
+		HAL_Delay(2000); //sound buzzer for 2 seconds
+		HAL_GPIO_TogglePin(Ready_to_Drive_Sound_GPIO_Port,
+		Ready_to_Drive_Sound_Pin);
 
-			//Method 2
-			//HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
-			//Ready_to_Drive_Sound_Pin, GPIO_PIN_SET);
-			//HAL_Delay(2000); //sound buzzer for 2 seconds
-			//HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
-			//Ready_to_Drive_Sound_Pin, GPIO_PIN_RESET);
+		//Method 2
+		//HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
+		//Ready_to_Drive_Sound_Pin, GPIO_PIN_SET);
+		//HAL_Delay(2000); //sound buzzer for 2 seconds
+		//HAL_GPIO_WritePin(Ready_to_Drive_Sound_GPIO_Port,
+		//Ready_to_Drive_Sound_Pin, GPIO_PIN_RESET);
 
-			current_State = RUNNING_STATE;
-			return;
-		} //end if
-		HAL_Delay(100);
-	} //end for loop
+		sprintf(msg, "Ready to Drive Enabled...\n");
+		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+		HAL_MAX_DELAY);
+
+		current_State = RUNNING_STATE;
+
+	} //end if
 
 } //end Ready_to_Drive()
 
@@ -685,8 +720,20 @@ static void APPS_Mapping(uint32_t *appsVal_0, uint32_t *appsVal_1,
 static void running_State(void) {
 
 	if (last_State != RUNNING_STATE) {
+		last_State = RUNNING_STATE;
+
 		// Turn Drive Enable ON
-		//(Toggle GPIO ON)
+
+		//Toggle GPIO method
+		HAL_GPIO_TogglePin(Drive_Enable_Output_GPIO_Port,
+		Drive_Enable_Output_Pin);
+
+		//PIN_SET GPIO method (preferred method as it clearly sets the GPIO PIN state)
+//		HAL_GPIO_WritePin(Drive_Enable_Output_GPIO_Port, Drive_Enable_Output_Pin, GPIO_PIN_SET);
+
+		sprintf(msg, "Running State...\n");
+		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+		HAL_MAX_DELAY);
 	} //end if
 
 	APPS_Mapping(&appsVal[0], &appsVal[1], apps_Pedal_Position);
@@ -695,17 +742,26 @@ static void running_State(void) {
 		current_State = BSPD_TRIP_STATE;
 	} //end if
 
-//	if (!HV_Present) {
-//		current_State = STANDBY_STATE;
-//	}
-
 } //end running()
 
 static void BSPD_Trip_State(void) {
 
 	if (last_State != BSPD_TRIP_STATE) {
+
+		last_State = BSPD_TRIP_STATE;
+
 		// Turn Drive Enable OFF
-		//(Toggle GPIO OFF)
+
+		//Toggle GPIO method
+		HAL_GPIO_TogglePin(Drive_Enable_Output_GPIO_Port,
+		Drive_Enable_Output_Pin);
+
+		//PIN_RESET GPIO method (preferred method as it clearly sets the GPIO PIN state)
+//		HAL_GPIO_WritePin(Drive_Enable_Output_GPIO_Port, Drive_Enable_Output_Pin, GPIO_PIN_RESET);
+
+		sprintf(msg, "BSPD Trip State...\n");
+		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+		HAL_MAX_DELAY);
 	} //end if
 
 	// Send CAN message to notify in BSPD trip state
@@ -714,22 +770,50 @@ static void BSPD_Trip_State(void) {
 		current_State = RUNNING_STATE;
 	} //end if
 
-	//	if (!HV_Present) {
-	//		current_State = STANDBY_STATE;
-	//	}
-
 } //end BSPD_Trip_State()
 
 static void error_State(void) {
 
 	// Should get here if throttle or brake sensor are out of range
 
-	// Based on error code
-
-	// Send CAN message to notify in error state
-
 	// Turn Drive Enable OFF
-	//(Toggle GPIO OFF)
+
+	//PIN_RESET GPIO method (preferred method as it clearly sets the GPIO PIN state)
+	HAL_GPIO_WritePin(Drive_Enable_Output_GPIO_Port, Drive_Enable_Output_Pin,
+			GPIO_PIN_RESET);
+
+	if (last_State != ERROR_STATE) {
+		last_State = ERROR_STATE;
+
+		sprintf(msg, "Error State...\n");
+		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+		HAL_MAX_DELAY);
+
+		// Display errors over Serial
+		// TODO: Also Send CAN message to notify in error state
+
+		if (errorCode == ERR_NONE) {
+			sprintf(msg, "   *Error state, but no error code logged...");
+			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+			HAL_MAX_DELAY);
+		}
+		if (errorCode & ERR_NO_BRAKE_SENSOR) {
+			sprintf(msg, "   *Error state, No brake sensor detected");
+			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+			HAL_MAX_DELAY);
+		}
+		if (errorCode & ERR_NO_THROTTLE_SENSOR) {
+			sprintf(msg, "   *Error state, No throttle sensor detected");
+			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+			HAL_MAX_DELAY);
+		}
+		if (errorCode & ERR_STATE_UNDEFINED) {
+			sprintf(msg, "   *State not defined in The State Machine.");
+			HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg),
+			HAL_MAX_DELAY);
+		}
+
+	} //end if
 
 } //end errorState()
 

@@ -69,6 +69,8 @@ void Error_Handler(void);
 #define USART_RX_GPIO_Port GPIOA
 #define LD2_Pin GPIO_PIN_5
 #define LD2_GPIO_Port GPIOA
+#define Drive_Enable_Output_Pin GPIO_PIN_5
+#define Drive_Enable_Output_GPIO_Port GPIOC
 #define APPS_1_SW_Pin GPIO_PIN_6
 #define APPS_1_SW_GPIO_Port GPIOC
 #define APPS_2_SW_Pin GPIO_PIN_8
