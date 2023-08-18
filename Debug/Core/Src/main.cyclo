@@ -7,7 +7,7 @@ main.c:480:13:MX_CAN1_Init	2
 main.c:527:13:MX_USART2_UART_Init	2
 main.c:556:13:MX_DMA_Init	1
 main.c:579:13:MX_GPIO_Init	1
-main.c:638:13:monitor_Signals	5
+main.c:638:13:monitor_Signals	1
 main.c:656:13:Ready_to_Drive	4
 main.c:697:13:APPS_Mapping	3
 main.c:720:13:running_State	4

@@ -637,15 +637,15 @@ static void MX_GPIO_Init(void) {
 
 static void monitor_Signals(void) {
 
-	if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
-		errorCode |= ERR_NO_THROTTLE_SENSOR;
-		current_State = ERROR_STATE;
-	}
-
-	if ((bpsVal[0] < bps_MIN) || (bpsVal[0] > bps_MAX)) {
-		errorCode |= ERR_NO_BRAKE_SENSOR;
-		current_State = ERROR_STATE;
-	}
+//	if ((appsVal[0] < APPS_0_MIN) || (appsVal[0] > APPS_0_MAX)) {
+//		errorCode |= ERR_NO_THROTTLE_SENSOR;
+//		current_State = ERROR_STATE;
+//	}
+//
+//	if ((bpsVal[0] < bps_MIN) || (bpsVal[0] > bps_MAX)) {
+//		errorCode |= ERR_NO_BRAKE_SENSOR;
+//		current_State = ERROR_STATE;
+//	}
 
 	//	if (!HV_Present) {
 	//		current_State = STANDBY_STATE;
